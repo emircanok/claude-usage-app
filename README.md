@@ -1,30 +1,30 @@
 # Claude Usage
 
-macOS menü çubuğunda **Claude Code kullanım yüzdesini** canlı gösteren küçük, native bir uygulama. Menü çubuğunda 5 saatlik limitin yüzdesi renk kodlu görünür; tıklayınca 5 saatlik / haftalık limitler, model bazlı kullanım ve sıfırlanma geri sayımları açılır.
+A small, native macOS app that shows your **Claude Code usage percentage** live in the menu bar. The percentage of your 5-hour limit appears color-coded in the menu bar; click it to reveal your 5-hour / weekly limits, per-model usage, and reset countdowns.
 
-> Swift + SwiftUI (`MenuBarExtra`), App Sandbox yok, Dock ikonu yok — sade bir menü çubuğu ajanı.
+> Swift + SwiftUI (`MenuBarExtra`), no App Sandbox, no Dock icon — a lean menu bar agent.
 
-## Özellikler
+## Features
 
-- 🎯 Menü çubuğunda 5 saatlik kullanım yüzdesi (renk kodlu: yeşil → turuncu → kırmızı)
-- 📊 Popover'da 5 saatlik + haftalık + Sonnet/Opus kullanımı ve sıfırlanma geri sayımları
-- 🔔 %75 ve %90 eşiklerinde tek seferlik macOS bildirimi
-- 🚀 Açılışta otomatik başlatma (Login Items / `SMAppService`)
-- 🔄 5 dakikada bir + popover açılışında + manuel yenileme
+- 🎯 5-hour usage percentage in the menu bar (color-coded: green → orange → red)
+- 📊 Popover with 5-hour + weekly + Sonnet/Opus usage and reset countdowns
+- 🔔 One-shot macOS notifications at the 75% and 90% thresholds
+- 🚀 Launch at login (Login Items / `SMAppService`)
+- 🔄 Refreshes every 5 minutes + on popover open + manual refresh
 
-## Nasıl çalışır?
+## How it works
 
-OAuth token'ı macOS Keychain'den (`Claude Code-credentials`) okur ve Claude Code'un `/usage` komutuyla aynı resmî endpoint'i (`api.anthropic.com/api/oauth/usage`) çağırır.
+It reads the OAuth token from the macOS Keychain (`Claude Code-credentials`) and calls the same official endpoint (`api.anthropic.com/api/oauth/usage`) that Claude Code's `/usage` command uses.
 
-Token'ın süresi dolmak üzereyse, Claude Code ile **birebir aynı şekilde** tazeler (`claude.ai/v1/oauth/token`) ve yeni token'ı Keychain'deki aynı kayda yerinde yazar — böylece Claude Code çalışmaya devam eder ve iki taraf senkron kalır. Token hiçbir üçüncü tarafa gönderilmez; yalnızca Anthropic'in resmî uçları kullanılır.
+When the token is about to expire, it refreshes it **exactly the same way Claude Code does** (`claude.ai/v1/oauth/token`) and writes the new token back in place into the same Keychain item — so Claude Code keeps working and both stay in sync. The token is never sent to any third party; only Anthropic's official endpoints are used.
 
-## Gereksinimler
+## Requirements
 
 - macOS 14+
-- Giriş yapılmış Claude Code (token'ın Keychain'de olması için)
+- A signed-in Claude Code (so the token exists in the Keychain)
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) + Xcode 15+
 
-## Derleme & çalıştırma
+## Build & run
 
 ```bash
 xcodegen generate
@@ -33,43 +33,43 @@ xcodebuild -project ClaudeUsage.xcodeproj -scheme ClaudeUsage \
 open build/Build/Products/Release/ClaudeUsage.app
 ```
 
-İlk açılışta macOS bir Keychain erişim izni soracak → **"Her Zaman İzin Ver"** seç.
+On first launch macOS will ask for Keychain access → choose **"Always Allow"**.
 
-Açılışta-başlat özelliğinin kararlı çalışması için uygulamayı `/Applications`'a taşı:
+For launch-at-login to work reliably, move the app to `/Applications`:
 
 ```bash
 cp -R build/Build/Products/Release/ClaudeUsage.app /Applications/
 ```
 
-> `project.yml` değiştirdiğinde ya da kaynak dosyası ekleyip çıkardığında `xcodegen generate` komutunu tekrar çalıştır — `.xcodeproj` bu dosyadan üretilir, elle düzenlenmez.
+> Whenever you change `project.yml` or add/remove a source file, re-run `xcodegen generate` — the `.xcodeproj` is generated from that file and is not hand-edited.
 
-## Proje yapısı
+## Project structure
 
 ```
 ClaudeUsage/
-├── ClaudeUsageApp.swift     # @main, AppDelegate, MenuBarExtra
-├── UsageViewModel.swift      # @Observable @MainActor — tek doğruluk kaynağı, 5 dk polling
-├── KeychainReader.swift      # Keychain okuma + token yerinde güncelleme (SecItemUpdate)
-├── TokenRefresher.swift      # OAuth token tazeleme
-├── UsageClient.swift         # Usage endpoint isteği
-├── Models.swift              # Decodable modeller + tarih çözümleme
-├── PopoverView.swift         # Açılır panel UI
-├── LabelRenderer.swift       # Renkli menü çubuğu etiketi (NSImage)
-├── NotificationManager.swift # Eşik bildirimleri
-└── LaunchAtLogin.swift       # SMAppService entegrasyonu
+├── ClaudeUsageApp.swift      # @main, AppDelegate, MenuBarExtra
+├── UsageViewModel.swift      # @Observable @MainActor — single source of truth, 5-min polling
+├── KeychainReader.swift      # Keychain read + in-place token update (SecItemUpdate)
+├── TokenRefresher.swift      # OAuth token refresh
+├── UsageClient.swift         # Usage endpoint request
+├── Models.swift              # Decodable models + date parsing
+├── PopoverView.swift         # Popover UI
+├── LabelRenderer.swift       # Color menu bar label (NSImage)
+├── NotificationManager.swift # Threshold notifications
+└── LaunchAtLogin.swift       # SMAppService integration
 ```
 
-## Mimari notlar
+## Architecture notes
 
-- **App Sandbox yok.** Sandbox'lı bir uygulama başka bir uygulamanın (Claude Code'un) Keychain kaydını okuyamaz; bu da uygulamanın tüm işlevini bozar. `project.yml` bilinçli olarak entitlements içermez.
-- **Renkli menü çubuğu etiketi.** `MenuBarExtra` `Text`/SF Symbol'ları monokrom template image olarak çizer. `LabelRenderer` rengi korumak için SwiftUI görünümünü `isTemplate = false` bir `NSImage`'e render eder.
-- **`User-Agent` zorunlu.** Usage endpoint'i `claude-code/<sürüm>` user-agent'ı olmadan agresif şekilde rate-limit'li (429) bir bucket döndürür.
+- **No App Sandbox.** A sandboxed app cannot read another app's (Claude Code's) Keychain item, which would break the app's entire purpose. `project.yml` deliberately ships no entitlements.
+- **Color menu bar label.** `MenuBarExtra` renders `Text`/SF Symbols as monochrome template images. `LabelRenderer` works around this by rendering a SwiftUI view to an `NSImage` with `isTemplate = false` to preserve color.
+- **`User-Agent` is mandatory.** Without a `claude-code/<version>` user-agent, the usage endpoint serves an aggressively rate-limited (429) bucket.
 
-## Notlar
+## Notes
 
-- **Token süresi dolarsa** ("Token süresi doldu" mesajı): herhangi bir Claude Code komutu çalıştır, token Keychain'de tazelenir.
-- Ad-hoc imza ile her yeniden derlemede Keychain izni tekrar sorulabilir. Sabit bir geliştirici sertifikasıyla imzalarsan bir daha sormaz.
+- **If the token expires** ("Token expired" message): run any Claude Code command and the token gets refreshed in the Keychain.
+- With ad-hoc signing, macOS may re-prompt for Keychain access after every rebuild. Signing with a stable developer certificate stops the re-prompts.
 
-## Sorumluluk reddi
+## Disclaimer
 
-Resmî bir Anthropic ürünü değildir. Claude Code'un kullandığı, resmî olarak belgelenmemiş usage endpoint'ini kullanır; bu uç değişebilir.
+Not an official Anthropic product. It uses the undocumented usage endpoint that Claude Code relies on; that endpoint may change.
