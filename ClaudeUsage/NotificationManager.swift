@@ -28,14 +28,15 @@ final class NotificationManager {
         if utilization < 75 {
             newLevel = 0 // window reset or usage dropped
         }
+        let loc = LocalizationManager.shared
         if utilization >= 75, firedLevel < 75 {
-            notify(title: "Claude usage \(Int(utilization))%",
-                   body: "Your 5-hour limit is filling up.")
+            notify(title: loc.usageNotificationTitle(percent: Int(utilization)),
+                   body: loc.t(.notifyFillingBody))
             newLevel = 75
         }
         if utilization >= 90, firedLevel < 90 {
-            notify(title: "Claude usage \(Int(utilization))%",
-                   body: "Your 5-hour limit is almost full.")
+            notify(title: loc.usageNotificationTitle(percent: Int(utilization)),
+                   body: loc.t(.notifyAlmostFullBody))
             newLevel = 90
         }
 

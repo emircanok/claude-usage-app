@@ -13,7 +13,19 @@ settings:
     PRODUCT_BUNDLE_IDENTIFIER: com.emircanok.ClaudeUsage
     GENERATE_INFOPLIST_FILE: NO
     INFOPLIST_FILE: ClaudeUsage/Info.plist
-    CODE_SIGN_STYLE: Automatic
+    # Developer ID signing for notarized distribution outside the Mac App Store.
+    # Stable signature => no Keychain re-prompt on every rebuild. Hardened runtime is
+    # mandatory for notarization; it does NOT sandbox the app, so reading Claude Code's
+    # Keychain item still works.
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "Developer ID Application"
+    DEVELOPMENT_TEAM: UNM5GHYJ72
+    ENABLE_HARDENED_RUNTIME: YES
+    # Stop Xcode from injecting com.apple.security.get-task-allow, which would make
+    # notarization reject the build. The app needs no entitlements (no sandbox).
+    CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+    # Secure timestamp is mandatory for notarization.
+    OTHER_CODE_SIGN_FLAGS: "--timestamp"
     # No CODE_SIGN_ENTITLEMENTS key on purpose -> no App Sandbox.
     # Sandbox would block reading Claude Code's keychain item and complicate networking.
 
@@ -29,5 +41,7 @@ targets:
         LSUIElement: true
         CFBundleDisplayName: Claude Usage
         CFBundleName: ClaudeUsage
+        CFBundleDevelopmentRegion: en
+        CFBundleLocalizations: [en, tr]
         LSMinimumSystemVersion: "14.0"
         NSHumanReadableCopyright: ""

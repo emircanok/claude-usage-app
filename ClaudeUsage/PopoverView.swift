@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PopoverView: View {
     let model: UsageViewModel
+    private let loc = LocalizationManager.shared
 
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var now = Date()
@@ -14,16 +15,17 @@ struct PopoverView: View {
 
             switch model.status {
             case .loading:
-                Label("Loading…", systemImage: "hourglass")
+                Label(loc.t(.loading), systemImage: "hourglass")
                     .foregroundStyle(.secondary)
             case .tokenExpired:
                 tokenExpiredView
             case .rateLimited:
-                Label("Rate limited — will retry shortly", systemImage: "clock.arrow.circlepath")
+                Label(loc.t(.rateLimited), systemImage: "clock.arrow.circlepath")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-            case let .error(message):
-                Label(message, systemImage: "exclamationmark.triangle")
+            case let .error(kind):
+                Label(loc.t(kind == .keychain ? .errorKeychain : .errorConnection),
+                      systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange)
             case .ok:
                 content
@@ -47,17 +49,40 @@ struct PopoverView: View {
         HStack {
             Image(systemName: "gauge.with.dots.needle.67percent")
                 .foregroundStyle(.tint)
-            Text("Claude Usage")
+            Text(loc.t(.claudeUsage))
                 .font(.headline)
             Spacer()
+            languageMenu
             Button {
                 Task { await model.refresh() }
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
             .buttonStyle(.borderless)
-            .help("Refresh")
+            .help(loc.t(.refresh))
         }
+    }
+
+    private var languageMenu: some View {
+        Menu {
+            ForEach(AppLanguage.allCases) { language in
+                Button {
+                    loc.language = language
+                } label: {
+                    if loc.language == language {
+                        Label(loc.displayName(for: language), systemImage: "checkmark")
+                    } else {
+                        Text(loc.displayName(for: language))
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "globe")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(loc.t(.language))
     }
 
     @ViewBuilder
@@ -65,21 +90,21 @@ struct PopoverView: View {
         if let usage = model.usage {
             VStack(spacing: 10) {
                 if let fiveHour = usage.fiveHour {
-                    usageRow(title: "5-hour", window: fiveHour)
+                    usageRow(title: loc.t(.fiveHour), window: fiveHour)
                 }
                 if let sevenDay = usage.sevenDay {
-                    usageRow(title: "Weekly", window: sevenDay)
+                    usageRow(title: loc.t(.weekly), window: sevenDay)
                 }
                 if let sonnet = usage.sevenDaySonnet {
-                    usageRow(title: "Weekly · Sonnet", window: sonnet)
+                    usageRow(title: loc.t(.weeklySonnet), window: sonnet)
                 }
                 if let opus = usage.sevenDayOpus {
-                    usageRow(title: "Weekly · Opus", window: opus)
+                    usageRow(title: loc.t(.weeklyOpus), window: opus)
                 }
             }
 
             if let updated = model.lastUpdated {
-                Text("Updated: \(updated.formatted(date: .omitted, time: .shortened))")
+                Text(loc.updated(at: updated.formatted(date: .omitted, time: .shortened)))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -99,7 +124,7 @@ struct PopoverView: View {
             ProgressView(value: min(window.utilization, 100), total: 100)
                 .tint(UsageColor.color(for: window.utilization))
             if let resetsAt = window.resetsAt {
-                Text("resets in \(resetsAt.resetCountdown(from: now))")
+                Text(loc.resetsIn(resetsAt.resetCountdown(from: now)))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -108,9 +133,9 @@ struct PopoverView: View {
 
     private var tokenExpiredView: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("Token expired", systemImage: "key.slash")
+            Label(loc.t(.tokenExpired), systemImage: "key.slash")
                 .foregroundStyle(.orange)
-            Text("Run any Claude Code command to refresh.")
+            Text(loc.t(.tokenExpiredHelp))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -118,7 +143,7 @@ struct PopoverView: View {
 
     private var footer: some View {
         HStack {
-            Toggle("Launch at login", isOn: $launchAtLogin)
+            Toggle(loc.t(.launchAtLogin), isOn: $launchAtLogin)
                 .toggleStyle(.checkbox)
                 .onChange(of: launchAtLogin) { _, newValue in
                     LaunchAtLogin.setEnabled(newValue)
@@ -126,7 +151,7 @@ struct PopoverView: View {
 
             Spacer()
 
-            Button("Quit") { NSApp.terminate(nil) }
+            Button(loc.t(.quit)) { NSApp.terminate(nil) }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
         }

@@ -4,12 +4,20 @@ import Observation
 @MainActor
 @Observable
 final class UsageViewModel {
+    /// Semantic error categories. Stored instead of a localized message so the
+    /// text is resolved at display time and re-localizes when the user switches
+    /// language.
+    enum ErrorKind: Equatable {
+        case keychain
+        case connection
+    }
+
     enum Status: Equatable {
         case loading
         case ok
         case tokenExpired
         case rateLimited
-        case error(String)
+        case error(ErrorKind)
     }
 
     /// Polling cadence. The User-Agent header is the main rate-limit guard;
@@ -48,7 +56,7 @@ final class UsageViewModel {
             applyTokenExpired()
             return
         } catch {
-            if usage == nil { status = .error("Could not read Keychain") }
+            if usage == nil { status = .error(.keychain) }
             return
         }
 
@@ -79,7 +87,7 @@ final class UsageViewModel {
             // Rate limited: keep last good data, show a calm state.
             status = .rateLimited
         } catch {
-            if usage == nil { status = .error("Connection error") }
+            if usage == nil { status = .error(.connection) }
         }
     }
 
