@@ -53,8 +53,14 @@ enum KeychainReader {
 
     /// Updates only the three OAuth token fields in place, preserving every
     /// other field in the blob (mcpOAuth, organizationUuid, scopes, etc.).
-    /// Uses `SecItemUpdate` so the item's ACL is kept intact — Claude Code
-    /// keeps its access and reads the same refreshed token.
+    ///
+    /// The item is created by Claude Code; when *this* app modifies its data,
+    /// macOS resets the item's access control list / partition list to trust
+    /// only the modifying app. That revokes the "Always Allow" grant Claude
+    /// Code's `security` tool relies on, so its next read re-triggers the
+    /// keychain prompt — repeatedly, as long as this app keeps writing. To
+    /// avoid that, the ACL is explicitly repaired after every write so the
+    /// item keeps trusting both this app and the `security` tool.
     static func updateTokens(accessToken: String,
                              refreshToken: String,
                              expiresAt: Double) throws {
@@ -81,5 +87,54 @@ enum KeychainReader {
 
         let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         guard status == errSecSuccess else { throw KeychainError.status(status) }
+
+        repairAccessControl()
+    }
+
+    // MARK: - Access control repair
+
+    /// Re-applies an access control list that trusts exactly this app and the
+    /// system `security` tool (which Claude Code shells out to for keychain
+    /// access). Called after every data write because modifying another app's
+    /// keychain item resets its ACL/partition list, which would otherwise
+    /// revoke Claude Code's "Always Allow" grant and storm the user with
+    /// keychain prompts. Best-effort: failures are logged, not fatal.
+    private static func repairAccessControl() {
+        // Resolve the underlying (file-keychain) item reference.
+        let refQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecReturnRef as String: true,
+        ]
+        var ref: CFTypeRef?
+        guard SecItemCopyMatching(refQuery as CFDictionary, &ref) == errSecSuccess,
+              let ref, CFGetTypeID(ref) == SecKeychainItemGetTypeID()
+        else {
+            NSLog("ACL repair skipped: keychain item ref unavailable")
+            return
+        }
+        let item = ref as! SecKeychainItem
+
+        // Trust this app and /usr/bin/security (Claude Code's keychain client).
+        var selfApp: SecTrustedApplication?
+        var securityTool: SecTrustedApplication?
+        SecTrustedApplicationCreateFromPath(nil, &selfApp)
+        SecTrustedApplicationCreateFromPath("/usr/bin/security", &securityTool)
+        let trusted = [selfApp, securityTool].compactMap { $0 }
+        guard !trusted.isEmpty else { return }
+
+        var access: SecAccess?
+        guard SecAccessCreate(service as CFString, trusted as CFArray, &access) == errSecSuccess,
+              let access
+        else {
+            NSLog("ACL repair skipped: SecAccessCreate failed")
+            return
+        }
+
+        let status = SecKeychainItemSetAccess(item, access)
+        if status != errSecSuccess {
+            NSLog("ACL repair failed: SecKeychainItemSetAccess status \(status)")
+        }
     }
 }
