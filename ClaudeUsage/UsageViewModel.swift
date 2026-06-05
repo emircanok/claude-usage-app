@@ -24,9 +24,6 @@ final class UsageViewModel {
     /// 5 minutes is comfortable.
     private static let pollInterval: TimeInterval = 300
 
-    /// Refresh proactively when the token expires within this window.
-    private static let refreshBufferMs: Double = 60_000
-
     private(set) var status: Status = .loading
     private(set) var usage: UsageResponse?
     private(set) var lastUpdated: Date?
@@ -61,28 +58,24 @@ final class UsageViewModel {
         }
 
         let oauth = credentials.claudeAiOauth
-        var accessToken = oauth.accessToken
         let nowMs = Date().timeIntervalSince1970 * 1000
 
-        // Proactive refresh: token already expired or about to.
-        if (oauth.expiresAt ?? 0) <= nowMs + Self.refreshBufferMs,
-           let refreshToken = oauth.refreshToken,
-           let refreshed = await refreshAndStore(refreshToken: refreshToken) {
-            accessToken = refreshed
+        // The access token is owned and refreshed by Claude Code. This app never
+        // writes to the Keychain: mutating Claude Code's item rotates the shared
+        // refresh token (logging Claude Code out) and resets the item's ACL
+        // (storming the user with keychain prompts). If the token has expired we
+        // simply wait for Claude Code to refresh it on its next command.
+        if let expiresAt = oauth.expiresAt, expiresAt <= nowMs {
+            applyTokenExpired()
+            return
         }
 
         do {
-            let response = try await UsageClient.fetch(accessToken: accessToken)
+            let response = try await UsageClient.fetch(accessToken: oauth.accessToken)
             apply(response)
         } catch UsageClientError.unauthorized {
-            // Token expired between read and call — try a reactive refresh once.
-            if let refreshToken = oauth.refreshToken,
-               let refreshed = await refreshAndStore(refreshToken: refreshToken),
-               let response = try? await UsageClient.fetch(accessToken: refreshed) {
-                apply(response)
-            } else {
-                applyTokenExpired()
-            }
+            // Token lapsed between read and call — Claude Code will refresh it.
+            applyTokenExpired()
         } catch let UsageClientError.http(code) where code == 429 {
             // Rate limited: keep last good data, show a calm state.
             status = .rateLimited
@@ -92,32 +85,6 @@ final class UsageViewModel {
     }
 
     // MARK: - Helpers
-
-    /// Refreshes the access token and writes the new credentials back to the
-    /// Keychain so Claude Code stays in sync. Returns the new access token, or
-    /// nil on failure (caller falls back to the token-expired state).
-    private func refreshAndStore(refreshToken: String) async -> String? {
-        do {
-            let refreshed = try await TokenRefresher.refresh(refreshToken: refreshToken)
-            do {
-                try await Task.detached(priority: .utility) {
-                    try KeychainReader.updateTokens(
-                        accessToken: refreshed.accessToken,
-                        refreshToken: refreshed.refreshToken,
-                        expiresAt: refreshed.expiresAt
-                    )
-                }.value
-            } catch {
-                // Refresh succeeded but persistence failed; use the token for
-                // this session and log so the keychain divergence is visible.
-                NSLog("Keychain write-back failed: \(error)")
-            }
-            return refreshed.accessToken
-        } catch {
-            NSLog("Token refresh failed: \(error)")
-            return nil
-        }
-    }
 
     private func apply(_ response: UsageResponse) {
         usage = response
